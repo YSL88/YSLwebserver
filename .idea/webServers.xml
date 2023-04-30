@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="bf9f8b69-a814-477d-b0a2-b38e63af26ff" name="cloud1">
+        <fileTransfer rootFolder="/home/ysl" accessType="SFTP" host="kb310server.f3322.net" port="31011" sshConfigId="1dcc8615-236e-4097-995f-6d85e7183644" sshConfig="ysl@kb310server.f3322.net:31011 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" isUseRsync="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

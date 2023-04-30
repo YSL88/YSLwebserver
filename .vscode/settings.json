@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "memory": "c",
+        "ostream": "c",
+        "__threading_support": "c"
+    }
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="kb310server.f3322.net" id="1dcc8615-236e-4097-995f-6d85e7183644" port="31011" nameFormat="DESCRIPTIVE" username="ysl" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>
