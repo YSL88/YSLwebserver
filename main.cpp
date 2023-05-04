@@ -125,14 +125,16 @@ int main_success()
 
     // int port = atoi(argv[1]);  // atoi()函数的作用是将字符串转换为整数
     int port = 9901;
-    // cout << "test" << endl;
+    cout << "start!" << endl;
     LOG_INFO("start!");
+//    cout << "port" << endl;
 
     addsig(SIGPIPE, SIG_IGN);  // /设置信号函数
 
     //创建数据库连接池
     connection_pool *connPool = connection_pool::GetInstance();
     connPool->init("192.168.1.11", "root", "root", "yourdb", 3306, 8);
+//    cout << "sql init" << endl;
 
     //创建线程池,这也是为数据库做准备的
     threadpool<http_conn> *pool = NULL;
