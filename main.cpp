@@ -136,7 +136,7 @@ int main_success()
     connPool->init("192.168.1.11", "root", "root", "yourdb", 3306, 8);
 //    cout << "sql init" << endl;
 
-    //创建线程池,这也是为数据库做准备的
+    //创建线程池
     threadpool<http_conn> *pool = NULL;
     try
     {
@@ -342,7 +342,7 @@ int main_success()
                     LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
                     Log::get_instance()->flush();
                     //若监测到读事件，将该事件放入请求队列
-                    pool->append(users + sockfd);
+                    pool->append(users + sockfd);  // user 是数组地址，sockfd 是偏移量
 
                     //若有数据传输，则将定时器往后延迟3个单位
                     //并对新的定时器在链表上的位置进行调整

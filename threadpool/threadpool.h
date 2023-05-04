@@ -89,9 +89,13 @@ bool threadpool<T>::append(T *request)
     m_workqueue.push_back(request);
     m_queuelocker.unlock();
     m_queuestat.post();  // TODO 为什么不在锁住的时候 +1 是为了唤醒吗
+    // P 操作：将 sem 减 1，相减后，如果 sem < 0，则进程/线程进入阻塞等待，
+    // 否则继续，表明 P 操作可能会阻塞；
+    // V 操作：将 sem 加 1，相加后，如果 sem <= 0，唤醒一个等待中的进程/线程，
+    // 表明 V 操作不会阻塞；
     return true;
 }
-// 有点不明白这个方法什么意思
+// 线程处理函数
 template <typename T>
 void *threadpool<T>::worker(void *arg)
 {
@@ -105,6 +109,10 @@ void threadpool<T>::run()
     while (!m_stop)
     {
         m_queuestat.wait();
+        // P 操作：将 sem 减 1，相减后，如果 sem < 0，则进程/线程进入阻塞等待，否则继续，
+        // 表明 P 操作可能会阻塞；
+        // V 操作：将 sem 加 1，相加后，如果 sem <= 0，唤醒一个等待中的进程/线程，
+        // 表明 V 操作不会阻塞；
         m_queuelocker.lock();
         if (m_workqueue.empty())
         {
