@@ -12,6 +12,51 @@
    3. telnet 192.168.1.11 9901
    4. webbench -c 1 -t 1 http://192.168.1.11:9901/
 # http
+1. 阻塞与非阻塞
+   recv()系统调用是否立即返回取决于所用的I/O模式 - 阻塞模式或非阻塞模式。
+   在阻塞模式下,recv()调用会立即返回以下情况:
+   1. 数据接收完毕 - 接收到所请求的全部数据,立即返回接收的数据长度
+   2. 对方连接关闭 - 对方关闭连接,recv()会立即返回0
+   3. 发生错误 - 返回-1,错误原因存于errno
+      否则,调用会一直阻塞,直到有数据可读或连接关闭为止。
+   在非阻塞模式下,recv()调用会立即返回以下情况:
+   1. 数据接收完毕 - 接收到所请求的全部数据,立即返回接收的数据长度
+   2. 对方连接关闭 - 对方关闭连接,recv()会立即返回0
+   3. 发生错误 - 返回-1,错误原因存于errno
+   4. 暂时无数据可读 - 返回-1,并设置errno为EAGAIN或EWOULDBLOCK
+   在第4种情况下,我们需要再次调用recv()读取数据,直到数据可读、连接关闭或错误发生。
+   所以总结来说:
+- 在阻塞模式下,recv()只在数据接收完毕、连接关闭或错误时立即返回,否则阻塞
+- 在非阻塞模式下,recv()会在上述情况下立即返回,另外,当暂时无数据可读时也会立即返回EAGAIN错误
+- 非阻塞模式下需要循环调用recv()读取数据,以处理暂时无数据可读的情况
+  一个简单的示例:
+  阻塞模式:
+  char buf[1024];
+  nread = recv(sockfd, buf, sizeof(buf), 0);
+  if (nread == -1) { /* 处理错误 */ }
+  else if (nread == 0) { /* 对方关闭连接 */ }
+  else { /* 处理接收的数据 */ }
+  非阻塞模式:
+  char buf[1024];
+  while (1) {
+  nread = recv(sockfd, buf, sizeof(buf), 0);
+  if (nread == -1 && errno == EAGAIN) continue;
+  else if (nread == -1) { /* 处理其他错误 */ }
+  else if (nread == 0) { /* 对方关闭连接 */ }
+  else { /* 处理接收的数据 */ }
+  break;
+  }
+对于network socket,可以在创建socket时指定SOCK_NONBLOCK,或者调用setsockopt()来设置SO_NONBLOCK选项:
+c
+// socket()时指定
+int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
+// setsockopt()设置
+int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+int yes = 1;
+setsockopt(sockfd, SOL_SOCKET, SO_NONBLOCK, &yes, sizeof(yes));
+没有检索到 SO_NONBLOCK 那 recv 应该都是阻塞IO
+2. 只读一次（read_once 函数），有数据就交给线程池来处理这个 socket ，这个是怎么保证
+    将所有数据读入对应buffer的
 
 

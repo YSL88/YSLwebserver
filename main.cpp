@@ -177,15 +177,14 @@ int main_success()
     ret = listen(listenfd, 5);  // // backlog = 5 表示监听队列的最大长度，超过这个长度的新链接会被拒绝
     assert(ret >= 0);
 
-    //创建内核事件表
-    // epoll把用户关心的文件描述符上的事件放在内核里的一个事件表中
+   // 一个epoll_event结构体的数组,用来存放从内核监听得到的事件
     epoll_event events[MAX_EVENT_NUMBER];
     epollfd = epoll_create(5);  // epollfd 就是内核时间表
     assert(epollfd != -1);
 
     addfd(epollfd, listenfd, false);
      // 调用 epoll_ctl，参数为 EPOLL_CTL_ADD，往事件表中注册事件
-    http_conn::m_epollfd = epollfd;  // ？
+    http_conn::m_epollfd = epollfd;  // 将上述epollfd赋值给http类对象的m_epollfd属性
 
     //创建管道
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
@@ -208,8 +207,12 @@ int main_success()
     while (!stop_server)
     {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
+        // 添加进去之后，等待即可
         // 我们在epollfd上注册需要监听的文件描述符,然后调用epoll_wait()等待其事件发生。
         // 一旦返回,我们就可以从events数组获知事件类型及相关数据,进行事件处理。
+        // 由于timeout为-1,它会无限期等待,直到有事件发生。
+        //当有事件发生时,epoll_wait()会将事件从内核拷贝到events数组,
+        // 并返回事件的个数,此时number会大于0。
         if (number < 0 && errno != EINTR)
         {
             LOG_ERROR("%s", "epoll failure");
@@ -238,6 +241,7 @@ int main_success()
                     LOG_ERROR("%s", "Internal server busy");
                     continue;
                 }
+                // http 连接数组，数组索引是socket套接字文件描述符，数组里面的东西是 http 类
                 users[connfd].init(connfd, client_address);
 
                 //初始化client_data数据
@@ -338,6 +342,7 @@ int main_success()
             {
                 util_timer *timer = users_timer[sockfd].timer;
                 if (users[sockfd].read_once())
+                // 只读一次，有数据就交给线程池来处理这个 socket
                 {
                     LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
                     Log::get_instance()->flush();

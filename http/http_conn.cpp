@@ -193,6 +193,8 @@ void http_conn::init()
 
 //从状态机，用于分析出一行内容
 //返回值为行的读取状态，有LINE_OK,LINE_BAD,LINE_OPEN
+// 在HTTP报文中，每一行的数据由\r\n作为结束字符，空行则是仅仅是字符\r\n。
+// 因此，可以通过查找\r\n将报文拆解成单独的行进行解析
 http_conn::LINE_STATUS http_conn::parse_line()
 {
     char temp;
@@ -227,6 +229,7 @@ http_conn::LINE_STATUS http_conn::parse_line()
 
 //循环读取客户数据，直到无数据可读或对方关闭连接
 //非阻塞ET工作模式下，需要一次性将数据读完
+// TODO 不懂，LT ET 需要对着有双学一学
 bool http_conn::read_once()
 {
     if (m_read_idx >= READ_BUFFER_SIZE)
@@ -235,7 +238,7 @@ bool http_conn::read_once()
     }
     int bytes_read = 0;
 
-#ifdef connfdLT
+#ifdef connfdLT  // 水平触发阻塞模式
 
     bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
 
@@ -258,6 +261,7 @@ bool http_conn::read_once()
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
+            // 这个判断实现了在无数据可读时"跳出循环,等待epoll通知",这是非阻塞IO编程的精髓。
             return false;
         }
         else if (bytes_read == 0)
@@ -379,9 +383,20 @@ http_conn::HTTP_CODE http_conn::process_read()
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
     char *text = 0;
+//    LOG_INFO("test checked %d", m_checked_idx);
 
+    // m_check_state 初始状态是 CHECK_STATE_REQUESTLINE，line_status 初始状态是 LINE_OK
+    // TODO 循环是为了什么，是为了消息没读完时进去吗
+    // 使用while循环,可以每读取一部分数据就立即判断状态并处理,不断重复直到解析完成，比如 ret = NO_REQUEST
+    // 就会退出 switch 继续读
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
+//      LOG_INFO("test checked end %d", m_checked_idx);
+        // m_start_line是行在buffer中的起始位置，将该位置后面的数据赋给text，
+        // 初始时值为0，后面m_start_line = m_checked_idx; 改变了值
+        // 此时从状态机已提前将一行的末尾字符\r\n变为\0\0，
+        // 所以text可以直接取出完整的行进行解析
+        // LOG_INFO("%s", text); 默认遇到 \0 判断为字符串结束，停止打印
         text = get_line();
         m_start_line = m_checked_idx;
         LOG_INFO("%s", text);
@@ -390,16 +405,24 @@ http_conn::HTTP_CODE http_conn::process_read()
         {
         case CHECK_STATE_REQUESTLINE:
         {
+            // 解析请求行
+            LOG_INFO("test how to loop");
+            LOG_INFO("%s", text);
             ret = parse_request_line(text);
+            // 得到解析这一行的结果，同时请求行解析成功，主状态机状态变为 CHECK_STATE_HEADER
+            // 但是 ret = NO_REQUEST 跳出 switch 去 while 那里
             if (ret == BAD_REQUEST)
                 return BAD_REQUEST;
-            break;
+            break;  // 用于退出 switch
         }
         case CHECK_STATE_HEADER:
         {
-            ret = parse_headers(text);
+            // 解析请求头
+            ret = parse_headers(text);  // 如果 header 有内容，text自己加
+            // 得到解析这一行的结果
             if (ret == BAD_REQUEST)
                 return BAD_REQUEST;
+            // 完整解析GET请求后，跳转到报文响应函数do_request()
             else if (ret == GET_REQUEST)
             {
                 return do_request();
@@ -408,9 +431,12 @@ http_conn::HTTP_CODE http_conn::process_read()
         }
         case CHECK_STATE_CONTENT:
         {
+            // 解析消息体
             ret = parse_content(text);
+            // 完整解析POST请求后，跳转到报文响应函数
             if (ret == GET_REQUEST)
                 return do_request();
+            // 解析完消息体即完成报文解析，避免再次进入循环，更新line_status
             line_status = LINE_OPEN;
             break;
         }
