@@ -5,7 +5,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-class sem  // RAII 实现 信号量类
+class sem  // RAII 实现 信号量类，P V
 {
 public:
     sem()
@@ -30,6 +30,7 @@ public:
     {
         sem_destroy(&m_sem);
     }
+    // 以原子操作的方式将信号量的值减1
     bool wait()
     {
         return sem_wait(&m_sem) == 0;
@@ -88,7 +89,7 @@ private:
     pthread_mutex_t m_mutex;  // 锁实体
 };
 
-class cond
+class cond  // 条件变量
 {
 public:
     cond()
