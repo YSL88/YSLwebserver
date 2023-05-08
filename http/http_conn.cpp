@@ -276,8 +276,14 @@ bool http_conn::read_once()
 
 //解析http请求行，获得请求方法，目标url及http版本号
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
+// - strpbrk: 查找字符串中第一个匹配给定字符集中的任意字符的位置。用于查找字符串中的分隔符等。
+//- strcasecmp: 字符串比较,不区分大小写。用于忽略大小写比较两个字符串。
+//- strspn: 计算字符串中第一个不在给定字符集中的字符的位置。用于跳过字符串开头的某些字符。
+//- strchr: 查找字符串中某个字符第一次出现的位置。
+//- strlen: 获取字符串的长度。
+//- strcat: 字符串连接,将一个字符串连接到另一个字符串的末尾。
 {
-    m_url = strpbrk(text, " \t");
+    m_url = strpbrk(text, " \t");  // \t 是 tab，\t 前面还有空格
     if (!m_url)
     {
         return BAD_REQUEST;
@@ -285,6 +291,9 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     *m_url++ = '\0';
     char *method = text;
     if (strcasecmp(method, "GET") == 0)
+    // strcasecmp()实际上是逐个字符比较两个字符串,直到发现不相等的字符或遇到字符串结束符('\0')为止。
+    //在这个示例中,method字符串的前3个字符与"GET"相同,但第4个字符是一个字符串结束符'\0'。
+    // 此时,strcasecmp()会认为"GET\0"已经是method字符串的全部内容,并且与比较字符串"GET"相等,所以返回0。
         m_method = GET;
     else if (strcasecmp(method, "POST") == 0)
     {
@@ -302,6 +311,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     if (strcasecmp(m_version, "HTTP/1.1") != 0)
         return BAD_REQUEST;
     if (strncasecmp(m_url, "http://", 7) == 0)
+    // 忽略大小写比较两个字符串的前n个字符
     {
         m_url += 7;
         m_url = strchr(m_url, '/');
@@ -323,6 +333,12 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 }
 
 //解析http请求的一个头部信息
+// text 在 while + get_line() 中已经指向请求头了
+// 这在while中不断循环处理，一次转换一行，直到 text[0] == '\0'
+// 如果 text[0] == '\0' 即遇到空行，要是 m_content_length 还是默认值 0
+// 说明是 GET 请求，就结束了，可以做响应了
+// 如果 text[0] == '\0' 即遇到空行，但是 m_content_length 不为 0
+// 说明是 POST 请求，还要继续处理请求数据
 http_conn::HTTP_CODE http_conn::parse_headers(char *text)
 {
     if (text[0] == '\0')
@@ -347,7 +363,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
     {
         text += 15;
         text += strspn(text, " \t");
-        m_content_length = atol(text);
+        m_content_length = atol(text);  // atol()函数用于将字符串转换为长整型数(long)。
     }
     else if (strncasecmp(text, "Host:", 5) == 0)
     {
@@ -369,7 +385,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 {
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
-        text[m_content_length] = '\0';
+        text[m_content_length] = '\0';  // 加结束标识，前面是 请求数据
         //POST请求中最后为输入的用户名和密码
         m_string = text;
         return GET_REQUEST;
@@ -386,9 +402,8 @@ http_conn::HTTP_CODE http_conn::process_read()
 //    LOG_INFO("test checked %d", m_checked_idx);
 
     // m_check_state 初始状态是 CHECK_STATE_REQUESTLINE，line_status 初始状态是 LINE_OK
-    // TODO 循环是为了什么，是为了消息没读完时进去吗
     // 使用while循环,可以每读取一部分数据就立即判断状态并处理,不断重复直到解析完成，比如 ret = NO_REQUEST
-    // 就会退出 switch 继续读
+    // 则跳出 switch 在 while中转
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
 //      LOG_INFO("test checked end %d", m_checked_idx);
@@ -406,14 +421,14 @@ http_conn::HTTP_CODE http_conn::process_read()
         case CHECK_STATE_REQUESTLINE:
         {
             // 解析请求行
-            LOG_INFO("test how to loop");
-            LOG_INFO("%s", text);
+//            LOG_INFO("test how to loop");
+//            LOG_INFO("%s", text);
             ret = parse_request_line(text);
             // 得到解析这一行的结果，同时请求行解析成功，主状态机状态变为 CHECK_STATE_HEADER
             // 但是 ret = NO_REQUEST 跳出 switch 去 while 那里
             if (ret == BAD_REQUEST)
                 return BAD_REQUEST;
-            break;  // 用于退出 switch
+            break;  // 用于退出 switch，并不会退出while
         }
         case CHECK_STATE_HEADER:
         {
@@ -425,7 +440,7 @@ http_conn::HTTP_CODE http_conn::process_read()
             // 完整解析GET请求后，跳转到报文响应函数do_request()
             else if (ret == GET_REQUEST)
             {
-                return do_request();
+                return do_request();  // 只是while进不去了，才函数返回
             }
             break;
         }
@@ -436,7 +451,7 @@ http_conn::HTTP_CODE http_conn::process_read()
             // 完整解析POST请求后，跳转到报文响应函数
             if (ret == GET_REQUEST)
                 return do_request();
-            // 解析完消息体即完成报文解析，避免再次进入循环，更新line_status
+            // 解析完消息体即完成报文解析，避免再次进入循环，所以更新line_status
             line_status = LINE_OPEN;
             break;
         }
@@ -446,13 +461,15 @@ http_conn::HTTP_CODE http_conn::process_read()
     }
     return NO_REQUEST;
 }
-
+// TODO 具体还需再看
 http_conn::HTTP_CODE http_conn::do_request()
 {
-    strcpy(m_real_file, doc_root);
+    strcpy(m_real_file, doc_root);  // The strcpy() functions copy the string src to dst
     int len = strlen(doc_root);
     //printf("m_url:%s\n", m_url);
     const char *p = strrchr(m_url, '/');
+    // strrchr()函数用于在字符串中查找某个字符最后一次出现的位置。
+    // 在HTTP解析中,我们经常使用它在URL中查找最后一个'/'字符,以将URL分成路径和文件名两个部分:
 
     //处理cgi
     if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
@@ -465,6 +482,8 @@ http_conn::HTTP_CODE http_conn::do_request()
         strcpy(m_url_real, "/");
         strcat(m_url_real, m_url + 2);
         strncpy(m_real_file + len, m_url_real, FILENAME_LEN - len - 1);
+        // 这个函数会从src字符串拷贝前n个字符到dest字符串
+        // dst 起始位置是 m_real_file + len，所以相当于追加
         free(m_url_real);
 
         //将用户名和密码提取出来
@@ -563,17 +582,40 @@ http_conn::HTTP_CODE http_conn::do_request()
     else
         strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
+    // 尝试获取m_real_file的文件信息,如果失败(返回-1),则表示资源文件不存在,返回NO_RESOURCE状态码;
+    //如果成功(返回0),则文件信息存储在m_file_stat结构体中,用于后续判断文件权限和类型。
+    //举个例子,如果m_real_file为:
+    ///home/wwwroot/index.html
+    //则成功执行stat()后,m_file_stat中可能包含如下信息:
+    //- st_mode: 0100644  # 文件,可读可写可执行
+    //- st_size: 1024     # 文件大小1KB
+    //- st_mtime: 1609782000   # 最后修改时间
     if (stat(m_real_file, &m_file_stat) < 0)
         return NO_RESOURCE;
+    // 判断文件的权限，是否可读，不可读则返回FORBIDDEN_REQUEST状态
     if (!(m_file_stat.st_mode & S_IROTH))
         return FORBIDDEN_REQUEST;
+    // 判断文件类型，如果是目录，则返回BAD_REQUEST，表示请求报文有误
     if (S_ISDIR(m_file_stat.st_mode))
         return BAD_REQUEST;
+    // 1. 以只读方式获取文件描述符
+    // O_RDONLY表示只读方式，文件描述符是打开文件后的一个数字,
+    // 用于标识该文件,我们可以通过它对文件进行各种系统调用。
     int fd = open(m_real_file, O_RDONLY);
+    // 2. 通过mmap()使用fd将m_real_file映射到内存,并获取映射区的起始地址m_file_address
+    //- addr一般设置为0,表示由系统分配地址
+    //- length是要映射的字节数,这里为文件大小
+    //- prot是内存页保护标志,这里是PROT_READ表示可读
+    //- flags一般为MAP_PRIVATE,表示映射的内存页是私有的
+    //- fd是open()返回的文件描述符
+    //- offset一般为0,表示从文件起始位置开始映射
+    // 通过这种方式,我们可以直接操作内存(m_file_address)来读取文件内容,无需真正读取文件。
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    // 3. 关闭fd,避免资源泄露
     close(fd);
     return FILE_REQUEST;
 }
+// 解除文件映射，释放该映射区域占用的资源
 void http_conn::unmap()
 {
     if (m_file_address)
@@ -583,10 +625,14 @@ void http_conn::unmap()
     }
 }
 
+// 服务器子线程调用process_write完成响应报文，随后注册epollout事件。
+// 服务器主线程检测写事件，并调用http_conn::write函数将响应报文发送给浏览器端。
 bool http_conn::write()
 {
     int temp = 0;
 
+    // 若要发送的数据长度为0
+    // 表示响应报文为空，一般不会出现这种情况
     if (bytes_to_send == 0)
     {
         modfd(m_epollfd, m_sockfd, EPOLLIN);
@@ -597,10 +643,17 @@ bool http_conn::write()
     while (1)
     {
         temp = writev(m_sockfd, m_iv, m_iv_count);
+        // writev()会先将各内存区域的数据拷贝到一个连续的内部缓冲区,再通过一次系统调用将其发送出去。
+        // 这样可以减少系统调用次数,也避免多次的数据拷贝,达到较高效率。
+        // end()一次只能发送一个连续内存区域的数据,writev()可以一次发送多个非连续内存区域的数据。
+        // writev()调用内部会使用send()等系统调用,但在此基础上实现I/O向量和零拷贝等机制,提供较高层的接口。
 
-        if (temp < 0)
+        if (temp < 0)  // 发送失败
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN)  // 判断缓冲区是否满了，这里指 writev 构建的内部缓冲区
+            // EAGAIN 错误表示当前缓冲区已满，无法继续发送数据，需要等待一段时间后重试。
+            // EAGAIN 错误通常与非阻塞套接字一起使用，用于提示应用程序在发送数据时需要等待一段时间，
+            // 直到缓冲区有足够的空间。
             {
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
@@ -611,19 +664,19 @@ bool http_conn::write()
 
         bytes_have_send += temp;
         bytes_to_send -= temp;
-        if (bytes_have_send >= m_iv[0].iov_len)
+        if (bytes_have_send >= m_iv[0].iov_len)  // 0 全部发出去了
         {
             m_iv[0].iov_len = 0;
             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
             m_iv[1].iov_len = bytes_to_send;
         }
-        else
+        else  // 0 没有全部发出去
         {
             m_iv[0].iov_base = m_write_buf + bytes_have_send;
             m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
         }
 
-        if (bytes_to_send <= 0)
+        if (bytes_to_send <= 0)  // 0 1 都发完了
         {
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN);
@@ -642,11 +695,16 @@ bool http_conn::write()
 }
 
 bool http_conn::add_response(const char *format, ...)
+// 函数声明中的 const char format 表示第一个参数是一个 const char 类型的指针，
+// 该指针指向一个格式化字符串，用于定义后续可变参数的格式。而 ... 则表示后续参数的数量和类型是可变的，
+// 可以是任何类型的数据。
+// 格式化字符串是一种带有占位符的字符串，占位符用于指定后续参数的格式和位置。
 {
     if (m_write_idx >= WRITE_BUFFER_SIZE)
         return false;
-    va_list arg_list;
-    va_start(arg_list, format);
+    va_list arg_list;  // va_list 是一个可变参数列表类型，通常用于定义函数接受可变数量的参数
+    va_start(arg_list, format);  // 创建va_list, format 之后的东西都塞到 arg_list 里面
+    // 使用 vsnprintf 函数进行字符串格式化，并将格式化后的字符串写入到 m_write_buf + m_write_idx 中。
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
     if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
     {
@@ -666,7 +724,7 @@ bool http_conn::add_status_line(int status, const char *title)
 bool http_conn::add_headers(int content_len)
 {
     add_content_length(content_len);
-    add_linger();
+    add_linger();  // 是否 keep-alive
     add_blank_line();
 }
 bool http_conn::add_content_length(int content_len)
@@ -723,9 +781,11 @@ bool http_conn::process_write(HTTP_CODE ret)
         if (m_file_stat.st_size != 0)
         {
             add_headers(m_file_stat.st_size);
+            // 第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
             m_iv[0].iov_base = m_write_buf;
             m_iv[0].iov_len = m_write_idx;
-            m_iv[1].iov_base = m_file_address;
+            // 第二个iovec指针指向mmap返回的文件指针，长度指向文件大小
+            m_iv[1].iov_base = m_file_address;  // mmap 映射到内存上的地址
             m_iv[1].iov_len = m_file_stat.st_size;
             m_iv_count = 2;
             bytes_to_send = m_write_idx + m_file_stat.st_size;
@@ -733,6 +793,7 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         else
         {
+            // 如果请求的资源大小为0，则返回空白html文件
             const char *ok_string = "<html><body></body></html>";
             add_headers(strlen(ok_string));
             if (!add_content(ok_string))
