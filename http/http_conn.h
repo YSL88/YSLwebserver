@@ -101,7 +101,7 @@ public:
     {
         return &m_address;
     }
-    // 同步线程初始化数据库读取表,不知道干啥的
+    // 初始化数据库读取表
     void initmysql_result(connection_pool *connPool);
 
 private:

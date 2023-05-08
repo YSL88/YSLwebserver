@@ -28,13 +28,14 @@ const char *doc_root = "/home/ysl/ysl-TinyWebServer-raw_version/root";
 map<string, string> users;
 locker m_lock;
 
+// 载入数据库表，就是将数据库中的表中的内容复制到map里
 void http_conn::initmysql_result(connection_pool *connPool)
 {
     //先从连接池中取一个连接
     MYSQL *mysql = NULL;
     connectionRAII mysqlcon(&mysql, connPool);
 
-    //在user表中检索username，passwd数据，浏览器端输入
+    //在user表中检索所有的username，passwd数据
     if (mysql_query(mysql, "SELECT username,passwd FROM user"))
     {
         LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
@@ -487,14 +488,16 @@ http_conn::HTTP_CODE http_conn::do_request()
         free(m_url_real);
 
         //将用户名和密码提取出来
-        //user=123&passwd=123
+        //格式 user=123&password=123
         char name[100], password[100];
         int i;
+        // user= 5 位
         for (i = 5; m_string[i] != '&'; ++i)
             name[i - 5] = m_string[i];
         name[i - 5] = '\0';
 
         int j = 0;
+        // &password= 10 位
         for (i = i + 10; m_string[i] != '\0'; ++i, ++j)
             password[j] = m_string[i];
         password[j] = '\0';
@@ -513,11 +516,15 @@ http_conn::HTTP_CODE http_conn::do_request()
             strcat(sql_insert, "')");
 
             if (users.find(name) == users.end())
+            // 1. users.find 返回容器中name元素的迭代器。这表示找到了该元素。
+            // 2. 返回容器.end(),表示未找到该元素。
             {
-
+                // 没找到
                 m_lock.lock();
                 int res = mysql_query(mysql, sql_insert);
                 users.insert(pair<string, string>(name, password));
+                // TODO map 是否多余，完全可以直接操作数据库
+                // 数据库中插入，自己的表也要插入
                 m_lock.unlock();
 
                 if (!res)
